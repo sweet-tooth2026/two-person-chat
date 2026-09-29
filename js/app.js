@@ -591,6 +591,56 @@
     return "";
   }
 
+  // 把录音解码并转成 WAV（16kHz 单声道）。WAV 自带时长信息，任何浏览器都能正常显示/播放
+  function decodeToWav(blob) {
+    return new Promise(function (resolve, reject) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) { reject(new Error("no AudioContext")); return; }
+      var ctx = new AC({ sampleRate: 16000 });
+      blob.arrayBuffer()
+        .then(function (buf) { return ctx.decodeAudioData(buf); })
+        .then(function (audioBuf) {
+          var sr = audioBuf.sampleRate || 16000;
+          var ch = audioBuf.getChannelData(0);
+          var wav = encodeWav(ch, sr);
+          try { ctx.close(); } catch (e) {}
+          resolve(wav);
+        })
+        .catch(function (e) {
+          try { ctx.close(); } catch (x) {}
+          reject(e);
+        });
+    });
+  }
+
+  // 16-bit PCM 单声道 WAV 编码
+  function encodeWav(samples, sampleRate) {
+    var n = samples.length;
+    var buf = new ArrayBuffer(44 + n * 2);
+    var v = new DataView(buf);
+    function wstr(off, s) { for (var i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); }
+    wstr(0, "RIFF");
+    v.setUint32(4, 36 + n * 2, true);
+    wstr(8, "WAVE");
+    wstr(12, "fmt ");
+    v.setUint32(16, 16, true);
+    v.setUint16(20, 1, true);   // PCM
+    v.setUint16(22, 1, true);   // 单声道
+    v.setUint32(24, sampleRate, true);
+    v.setUint32(28, sampleRate * 2, true);
+    v.setUint16(32, 2, true);
+    v.setUint16(34, 16, true);
+    wstr(36, "data");
+    v.setUint32(40, n * 2, true);
+    var off = 44;
+    for (var i = 0; i < n; i++) {
+      var s = Math.max(-1, Math.min(1, samples[i]));
+      v.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+      off += 2;
+    }
+    return new Blob([buf], { type: "audio/wav" });
+  }
+
   function startRecord(e) {
     if (e) { e.preventDefault(); }
     if (recorder.mediaRecorder) return;
@@ -616,12 +666,16 @@
           var blob = new Blob(recorder.chunks, { type: usedMime });
           recorder.chunks = [];
           recorder.mediaRecorder = null;
-          if (blob.size > 0) {
-            var isMp4 = usedMime.indexOf("mp4") >= 0;
-            sendMedia("voice", blob, isMp4 ? "语音消息.m4a" : "语音消息.webm", blob.type || usedMime);
-          } else {
-            toast(t("toast_short_record"));
-          }
+          if (blob.size <= 0) { toast(t("toast_short_record")); return; }
+          var origName = usedMime.indexOf("mp4") >= 0 ? "语音消息.m4a" : "语音消息.webm";
+          // 转成 WAV 保证时长显示正常；解码失败则退回原格式发送
+          decodeToWav(blob)
+            .then(function (wav) {
+              sendMedia("voice", wav, "语音消息.wav", "audio/wav");
+            })
+            .catch(function () {
+              sendMedia("voice", blob, origName, blob.type || usedMime);
+            });
         };
         mr.start();
         $("btn-mic").classList.add("recording");
