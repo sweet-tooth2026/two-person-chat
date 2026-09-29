@@ -287,7 +287,8 @@ Deno.serve(async (req: Request) => {
       out.set(c, off);
       off += c.byteLength;
     }
-    const safeName = String(fmeta.name || "file").replace(/["\\\r\n]/g, "");
+    // 响应头只允许 ASCII：中文等非 ASCII 文件名会触发平台 500，这里转成下划线（不影响界面显示的文件名，那只来自消息数据）
+    const safeName = String(fmeta.name || "file").replace(/["\\\r\n]/g, "").replace(/[^\x20-\x7e]/g, "_") || "file";
     return new Response(out, {
       headers: {
         "Content-Type": fmeta.mime || "application/octet-stream",
