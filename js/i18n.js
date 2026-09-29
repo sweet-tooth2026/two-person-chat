@@ -179,22 +179,25 @@
     return detect();
   }
 
-  var current = load();
+  // 单一数据源：api.current 始终是当前语言，切换后立即同步
+  var api = {
+    current: load(),
+  };
 
   function t(key) {
-    var v = DICT[current] && DICT[current][key];
+    var v = DICT[api.current] && DICT[api.current][key];
     if (v !== undefined) return v;
     var z = DICT.zh && DICT.zh[key];
     return z !== undefined ? z : key;
   }
 
   function apply() {
-    document.documentElement.lang = current === "zh" ? "zh-CN" : "en";
+    document.documentElement.lang = api.current === "zh" ? "zh-CN" : "en";
     var title = document.querySelector("title");
     if (title) title.textContent = t("app_name");
 
     var btn = document.getElementById("btn-lang");
-    if (btn) btn.textContent = current === "zh" ? t("btn_lang_to_en") : t("btn_lang_to_zh");
+    if (btn) btn.textContent = api.current === "zh" ? t("btn_lang_to_en") : t("btn_lang_to_zh");
 
     var els = document.querySelectorAll("[data-i18n]");
     for (var i = 0; i < els.length; i++) {
@@ -216,17 +219,15 @@
 
   function setLang(lang) {
     if (lang !== "zh" && lang !== "en") return;
-    current = lang;
+    api.current = lang;
     try { localStorage.setItem(KEY, lang); } catch (e) {}
     apply();
   }
 
-  window.I18N = {
-    current: current,
-    t: t,
-    set: setLang,
-    apply: apply,
-  };
+  api.t = t;
+  api.set = setLang;
+  api.apply = apply;
+  window.I18N = api;
 
   apply();
 })();
