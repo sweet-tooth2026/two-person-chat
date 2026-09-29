@@ -477,6 +477,16 @@
     timer: null,
   };
 
+  // 优先选 MP4（自带时长信息，播放正常）；不支持才退回 webm
+  function pickAudioMime() {
+    if (typeof MediaRecorder === "undefined" || !MediaRecorder.isTypeSupported) return "";
+    var cands = ["audio/mp4;codecs=opus", "audio/mp4", "audio/webm;codecs=opus", "audio/webm"];
+    for (var i = 0; i < cands.length; i++) {
+      if (MediaRecorder.isTypeSupported(cands[i])) return cands[i];
+    }
+    return "";
+  }
+
   function startRecord(e) {
     if (e) { e.preventDefault(); }
     if (recorder.mediaRecorder) return;
@@ -486,7 +496,7 @@
     }
     navigator.mediaDevices.getUserMedia({ audio: true })
       .then(function (stream) {
-        var mime = (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("audio/webm")) ? "audio/webm" : "";
+        var mime = pickAudioMime();
         var mr;
         try {
           mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
@@ -498,11 +508,13 @@
         mr.ondataavailable = function (ev) { if (ev.data && ev.data.size) recorder.chunks.push(ev.data); };
         mr.onstop = function () {
           stream.getTracks().forEach(function (t) { t.stop(); });
-          var blob = new Blob(recorder.chunks, { type: mime || "audio/webm" });
+          var usedMime = mime || (mr.mimeType || "audio/webm");
+          var blob = new Blob(recorder.chunks, { type: usedMime });
           recorder.chunks = [];
           recorder.mediaRecorder = null;
           if (blob.size > 0) {
-            sendMedia("voice", blob, "语音消息.webm", blob.type || "audio/webm");
+            var isMp4 = usedMime.indexOf("mp4") >= 0;
+            sendMedia("voice", blob, isMp4 ? "语音消息.m4a" : "语音消息.webm", blob.type || usedMime);
           } else {
             toast("录音太短");
           }
@@ -570,7 +582,8 @@
     } else if (msg.type === "voice") {
       var audio = document.createElement("div");
       audio.className = "msg-audio";
-      audio.innerHTML = '<audio controls preload="metadata" src="' + esc(fileUrl(msg.media)) + '"></audio>';
+      // preload=auto：让播放器完整下载音频，避免无时长元数据的 webm 显示 0:00
+      audio.innerHTML = '<audio controls preload="auto" src="' + esc(fileUrl(msg.media)) + '"></audio>';
       bubble.appendChild(audio);
     } else {
       return;
