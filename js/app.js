@@ -36,9 +36,14 @@
     pollTimer: null,
     localSeq: 0,      // 本地乐观回显用的临时序号
     localMsgs: [],    // 尚未被服务器确认的本地消息
+    statusMode: "",   // 连接状态："" | "connecting" | "on" | "off"
   };
 
   /* ===== 小工具 ===== */
+  function t(key) {
+    return (window.I18N && I18N.t) ? I18N.t(key) : key;
+  }
+
   function toast(msg) {
     toastEl.textContent = msg;
     toastEl.hidden = false;
@@ -48,7 +53,7 @@
 
   function showLoading(on, text) {
     if (on) {
-      loadingEl.querySelector(".loading-box").textContent = text || "正在处理…";
+      loadingEl.querySelector(".loading-box").textContent = text || t("loading_processing");
       loadingEl.hidden = false;
     } else {
       loadingEl.hidden = true;
@@ -96,10 +101,10 @@
     opts = opts || {};
     return fetch(WORKER + path, opts)
       .then(function (res) {
-        return res.json().catch(function () { return { ok: false, error: "响应解析失败 (" + res.status + ")" }; });
+        return res.json().catch(function () { return { ok: false, error: t("err_parse") + " (" + res.status + ")" }; });
       })
       .then(function (data) {
-        if (!data.ok) throw new Error(data.error || "请求失败");
+        if (!data.ok) throw new Error(data.error || t("err_request"));
         return data;
       });
   }
@@ -168,7 +173,7 @@
       var item = document.createElement("div");
       item.className = "room-item";
       item.innerHTML =
-        '<div class="room-name">' + esc(r.name || "未命名房间") + '</div>' +
+        '<div class="room-name">' + esc(r.name || t("room_unnamed")) + '</div>' +
         '<div class="room-code">' + esc(r.code) + "</div>";
       item.addEventListener("click", function () {
         if (r.role === "owner" && r.token) {
@@ -186,13 +191,13 @@
   function initEnterForms() {
     $("form-create").addEventListener("submit", function (e) {
       e.preventDefault();
-      var name = $("create-room-name").value.trim() || "聊天室";
-      var nick = $("create-nick").value.trim() || "房主";
-      showLoading(true, "正在创建房间…");
+      var name = $("create-room-name").value.trim() || t("default_room_name");
+      var nick = $("create-nick").value.trim() || t("default_owner_nick");
+      showLoading(true, t("loading_creating"));
       api("/api/room/create", { method: "POST" })
         .then(function (d) {
           showLoading(false);
-          S.room = { code: d.code, roomId: d.roomId, role: "owner", token: d.ownerToken, name: name, myNick: nick, otherNick: "受邀者" };
+          S.room = { code: d.code, roomId: d.roomId, role: "owner", token: d.ownerToken, name: name, myNick: nick, otherNick: t("role_guest") };
           saveSession();
           saveRoom(d.code, name, "owner", d.ownerToken);
           $("invite-code").textContent = d.code;
@@ -208,15 +213,15 @@
     $("form-join").addEventListener("submit", function (e) {
       e.preventDefault();
       var code = $("join-code").value.trim().toUpperCase();
-      var nick = $("join-nick").value.trim() || "受邀者";
-      if (!code) { toast("请输入邀请码"); return; }
-      showLoading(true, "正在加入房间…");
+      var nick = $("join-nick").value.trim() || t("default_guest_nick");
+      if (!code) { toast(t("toast_enter_code")); return; }
+      showLoading(true, t("loading_joining"));
       api("/api/room/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: code }) })
         .then(function (d) {
           showLoading(false);
-          S.room = { code: code, roomId: d.roomId, role: "guest", token: d.guestToken, name: "聊天室", myNick: nick, otherNick: "房主" };
+          S.room = { code: code, roomId: d.roomId, role: "guest", token: d.guestToken, name: t("default_room_name"), myNick: nick, otherNick: t("role_owner") };
           saveSession();
-          saveRoom(code, "聊天室", "guest", d.guestToken);
+          saveRoom(code, t("default_room_name"), "guest", d.guestToken);
           enterChat();
         })
         .catch(function (err) {
@@ -230,13 +235,13 @@
       var code = $("owner-code").value.trim().toUpperCase();
       var pass = $("owner-pass").value.trim();
       var nick = $("owner-nick").value.trim();
-      if (!code || !pass) { toast("请输入邀请码和房主凭证"); return; }
-      showLoading(true, "正在验证…");
+      if (!code || !pass) { toast(t("toast_enter_both")); return; }
+      showLoading(true, t("loading_verifying"));
       api("/api/room/recover", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: code, ownerToken: pass }) })
         .then(function (d) {
           showLoading(false);
           var prev = loadSession();
-          S.room = { code: code, roomId: d.roomId, role: "owner", token: pass, name: prev && prev.name || "聊天室", myNick: nick || (prev && prev.myNick) || "房主", otherNick: "受邀者" };
+          S.room = { code: code, roomId: d.roomId, role: "owner", token: pass, name: prev && prev.name || t("default_room_name"), myNick: nick || (prev && prev.myNick) || t("default_owner_nick"), otherNick: t("role_guest") };
           saveSession();
           saveRoom(code, S.room.name, "owner", pass);
           enterChat();
@@ -248,10 +253,10 @@
     });
 
     $("btn-copy-code").addEventListener("click", function () {
-      copyText($("invite-code").textContent, "邀请码已复制");
+      copyText($("invite-code").textContent, t("toast_copied_code"));
     });
     $("btn-copy-pass").addEventListener("click", function () {
-      copyText($("invite-pass").textContent, "房主凭证已复制");
+      copyText($("invite-pass").textContent, t("toast_copied_pass"));
     });
     $("btn-go-chat").addEventListener("click", enterChat);
     $("btn-leave").addEventListener("click", leaveChat);
@@ -272,18 +277,18 @@
     ta.style.opacity = "0";
     document.body.appendChild(ta);
     ta.select();
-    try { document.execCommand("copy"); toast(tip); } catch (e) { toast("复制失败，请手动复制"); }
+    try { document.execCommand("copy"); toast(tip); } catch (e) { toast(t("toast_copy_fail")); }
     document.body.removeChild(ta);
   }
 
   /* ===== 房主回归（我的房间点击） ===== */
   function ownerRecover(code, token, name) {
-    showLoading(true, "正在进入房间…");
+    showLoading(true, t("loading_entering"));
     api("/api/room/recover", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: code, ownerToken: token }) })
       .then(function (d) {
         showLoading(false);
         var prev = loadSession();
-        S.room = { code: code, roomId: d.roomId, role: "owner", token: token, name: name || "聊天室", myNick: (prev && prev.myNick) || "房主", otherNick: "受邀者" };
+        S.room = { code: code, roomId: d.roomId, role: "owner", token: token, name: name || t("default_room_name"), myNick: (prev && prev.myNick) || t("default_owner_nick"), otherNick: t("role_guest") };
         saveSession();
         enterChat();
       })
@@ -297,12 +302,26 @@
   function enterChat() {
     if (!S.room) return;
     S.localMsgs = [];
-    $("chat-room-name").textContent = S.room.name || "聊天室";
-    $("chat-meta").textContent = (S.room.role === "owner" ? "房主" : "受邀者") + " · " + esc(S.room.myNick || "");
-    setStatus("connecting", "连接中…");
+    refreshChatChrome();
+    setStatus("connecting", t("status_connecting"));
     showScreen("chat");
     connectWs();
     startPolling();
+  }
+
+  // 语言切换后刷新界面文案（不碰聊天记录/昵称/房间名）
+  function refreshChatChrome() {
+    if (!S.room) return;
+    var n = $("chat-room-name");
+    if (n) n.textContent = S.room.name || t("default_room_name");
+    var m = $("chat-meta");
+    if (m) m.textContent = (S.room.role === "owner" ? t("role_owner") : t("role_guest")) + " · " + esc(S.room.myNick || "");
+    if (S.statusMode) {
+      var key = S.statusMode === "on" ? "status_connected" : S.statusMode === "off" ? "status_reconnecting" : "status_connecting";
+      setStatus(S.statusMode, t(key));
+    }
+    var mic = $("btn-mic");
+    if (mic && !recorder.mediaRecorder) mic.title = t("title_hold_talk");
   }
 
   function leaveChat() {
@@ -318,6 +337,7 @@
   }
 
   function setStatus(mode, text) {
+    S.statusMode = mode;
     var dot = $("status-dot");
     dot.className = "dot" + (mode === "on" ? " on" : mode === "off" ? " off" : "");
     $("status-text").textContent = text;
@@ -333,7 +353,7 @@
     if (!S.room) return;
     if (S.closedByUser) return;
     closeWs();
-    setStatus("", "连接中…");
+    setStatus("", t("status_connecting"));
     var ws;
     try {
       ws = new WebSocket(wsUrl());
@@ -345,7 +365,7 @@
     ws.onopen = function () {
       S.wsReady = true;
       S.reconnectDelay = 1000;
-      setStatus("on", "已连接");
+      setStatus("on", t("status_connected"));
       loadHistory();
     };
     ws.onmessage = function (ev) {
@@ -363,7 +383,7 @@
     ws.onclose = function () {
       S.wsReady = false;
       if (S.ws !== ws) return;
-      setStatus("off", "连接断开，重连中…");
+      setStatus("off", t("status_reconnecting"));
       scheduleReconnect();
     };
     ws.onerror = function () {
@@ -480,14 +500,14 @@
     var input = $("text-input");
     var text = input.value.trim();
     if (!text) return;
-    if (!S.wsReady) { toast("尚未连接，请稍候"); return; }
+    if (!S.wsReady) { toast(t("toast_not_connected")); return; }
     try {
       S.ws.send(JSON.stringify({ type: "text", text: text }));
       input.value = "";
       // 本地立即显示（服务器确认后自动去重替换）
       renderLocalEcho({ from: S.room.role, ts: Date.now(), type: "text", text: text });
     } catch (e) {
-      toast("发送失败");
+      toast(t("toast_send_fail"));
     }
   }
 
@@ -502,14 +522,14 @@
         return res.json().catch(function () { return { ok: false }; });
       })
       .then(function (d) {
-        if (!d.ok) throw new Error("上传失败");
+        if (!d.ok) throw new Error(t("toast_upload_fail"));
         return { id: id, name: name, mime: mime, size: blob.size };
       });
   }
 
   function sendMedia(type, blob, name, mime) {
-    if (!S.wsReady) { toast("尚未连接，请稍候"); return; }
-    showLoading(true, "正在上传…");
+    if (!S.wsReady) { toast(t("toast_not_connected")); return; }
+    showLoading(true, t("loading_uploading"));
     uploadMedia(blob, name, mime)
       .then(function (media) {
         showLoading(false);
@@ -519,7 +539,7 @@
       })
       .catch(function (err) {
         showLoading(false);
-        toast(err.message || "上传失败");
+        toast(err.message || t("toast_upload_fail"));
       });
   }
 
@@ -545,11 +565,11 @@
         var needsJpeg = file.size > 1.5 * 1024 * 1024;
         var mime = needsJpeg ? "image/jpeg" : (file.type || "image/png");
         canvas.toBlob(function (blob) {
-          if (!blob) { reject(new Error("图片处理失败")); return; }
+          if (!blob) { reject(new Error(t("toast_img_fail"))); return; }
           resolve({ blob: blob, name: (needsJpeg ? "photo.jpg" : (file.name || "图片.png")), mime: mime });
         }, mime, 0.85);
       };
-      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error("图片读取失败")); };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error(t("toast_img_read_fail"))); };
       img.src = url;
     });
   }
@@ -575,7 +595,7 @@
     if (e) { e.preventDefault(); }
     if (recorder.mediaRecorder) return;
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      toast("当前浏览器不支持录音");
+      toast(t("toast_no_mic"));
       return;
     }
     navigator.mediaDevices.getUserMedia({ audio: true })
@@ -600,16 +620,16 @@
             var isMp4 = usedMime.indexOf("mp4") >= 0;
             sendMedia("voice", blob, isMp4 ? "语音消息.m4a" : "语音消息.webm", blob.type || usedMime);
           } else {
-            toast("录音太短");
+            toast(t("toast_short_record"));
           }
         };
         mr.start();
         $("btn-mic").classList.add("recording");
-        $("btn-mic").title = "松开结束";
+        $("btn-mic").title = t("release_talk");
         recorder.timer = setTimeout(stopRecord, 60000); // 最长 60 秒
       })
       .catch(function () {
-        toast("无法使用麦克风（请允许权限）");
+        toast(t("toast_mic_denied"));
       });
   }
 
@@ -619,7 +639,7 @@
     }
     if (recorder.timer) { clearTimeout(recorder.timer); recorder.timer = null; }
     $("btn-mic").classList.remove("recording");
-    $("btn-mic").title = "按住说话";
+    $("btn-mic").title = t("title_hold_talk");
   }
 
   /* ===== 消息渲染 ===== */
@@ -631,7 +651,7 @@
     var isMine = msg.from === S.room.role;
     var row = document.createElement("div");
     row.className = "msg-row" + (isMine ? " mine" : "");
-    var nick = isMine ? (S.room.myNick || "我") : (S.room.otherNick || "对方");
+    var nick = isMine ? (S.room.myNick || t("default_me")) : (S.room.otherNick || t("default_them"));
     var avatar = document.createElement("div");
     avatar.className = "msg-avatar";
     avatar.textContent = (nick || "?").slice(0, 1);
@@ -647,7 +667,7 @@
       var img = document.createElement("img");
       img.className = "msg-img";
       img.src = fileUrl(msg.media);
-      img.alt = msg.media.name || "图片";
+      img.alt = msg.media.name || t("label_image");
       img.addEventListener("click", function () {
         window.open(img.src, "_blank");
       });
@@ -660,7 +680,7 @@
       a.rel = "noopener";
       a.innerHTML =
         '<svg class="msg-file-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 3h8l4 4v14H6z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M14 3v4h4M9 12h6M9 16h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>' +
-        '<span><div class="msg-file-name">' + esc(msg.media.name || "文件") + "</div>" +
+        '<span><div class="msg-file-name">' + esc(msg.media.name || t("label_file")) + "</div>" +
         '<div class="msg-file-size">' + fmtSize(msg.media.size) + "</div></span>";
       bubble.appendChild(a);
     } else if (msg.type === "voice") {
@@ -715,7 +735,7 @@
       var f = this.files && this.files[0];
       this.value = "";
       if (!f) return;
-      showLoading(true, "正在处理图片…");
+      showLoading(true, t("loading_image"));
       compressImage(f)
         .then(function (r) {
           showLoading(false);
@@ -732,7 +752,7 @@
       var f = this.files && this.files[0];
       this.value = "";
       if (!f) return;
-      if (f.size > MAX_FILE) { toast("文件超过 15MB 上限"); return; }
+      if (f.size > MAX_FILE) { toast(t("toast_file_too_large")); return; }
       sendMedia("file", f, f.name, f.type || "application/octet-stream");
     });
 
@@ -763,6 +783,20 @@
     initChatInput();
     renderMyRooms();
 
+    // 语言切换按钮
+    var langBtn = $("btn-lang");
+    if (langBtn && window.I18N) {
+      langBtn.addEventListener("click", function () {
+        var next = I18N.current === "zh" ? "en" : "zh";
+        I18N.set(next);
+        toast(I18N.t(next === "zh" ? "lang_switched_zh" : "lang_switched_en"));
+      });
+    }
+    // 语言切换后刷新动态界面文字（聊天记录/昵称/房间名不动）
+    document.addEventListener("tpc:langchange", function () {
+      refreshChatChrome();
+    });
+
     // 上次会话自动续接
     var prev = loadSession();
     if (prev && prev.code && prev.roomId && prev.role && prev.token !== undefined) {
@@ -770,7 +804,7 @@
       if (p.role === "owner") {
         api("/api/room/recover", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: p.code, ownerToken: p.token }) })
           .then(function (d) {
-            S.room = { code: p.code, roomId: d.roomId, role: "owner", token: p.token, name: p.name || "聊天室", myNick: p.myNick || "房主", otherNick: p.otherNick || "受邀者" };
+            S.room = { code: p.code, roomId: d.roomId, role: "owner", token: p.token, name: p.name || t("default_room_name"), myNick: p.myNick || t("default_owner_nick"), otherNick: p.otherNick || t("role_guest") };
             saveSession();
             enterChat();
           })
@@ -780,7 +814,7 @@
       } else {
         api("/api/room/guest-recover", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: p.code, guestToken: p.token }) })
           .then(function (d) {
-            S.room = { code: p.code, roomId: d.roomId, role: "guest", token: p.token, name: p.name || "聊天室", myNick: p.myNick || "受邀者", otherNick: p.otherNick || "房主" };
+            S.room = { code: p.code, roomId: d.roomId, role: "guest", token: p.token, name: p.name || t("default_room_name"), myNick: p.myNick || t("default_guest_nick"), otherNick: p.otherNick || t("role_owner") };
             saveSession();
             enterChat();
           })
