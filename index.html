@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>二人聊天室</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%230f766e'/%3E%3Cpath d='M5 7.5A2.5 2.5 0 0 1 7.5 5h9A2.5 2.5 0 0 1 19 7.5v5a2.5 2.5 0 0 1-2.5 2.5H11l-3.2 2.9c-.5.4-1.3.1-1.3-.6V14a2.5 2.5 0 0 1-1.5-2.3v-4.2z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ===== 视图：进入 / 创建 / 加入 ===== -->
+<section id="screen-enter" class="screen">
+  <div class="enter-wrap">
+    <div class="brand">
+      <div class="brand-logo">
+        <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><rect width="24" height="24" rx="6" fill="#0f766e"/><path d="M5 7.5A2.5 2.5 0 0 1 7.5 5h9A2.5 2.5 0 0 1 19 7.5v5a2.5 2.5 0 0 1-2.5 2.5H11l-3.2 2.9c-.5.4-1.3.1-1.3-.6V14a2.5 2.5 0 0 1-1.5-2.3v-4.2z" fill="#fff"/></svg>
+      </div>
+      <h1>二人聊天室</h1>
+      <p class="subtitle">只属于两个人的聊天空间 · 文字 / 图片 / 文件 / 语音</p>
+    </div>
+
+    <div class="card">
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="create" role="tab">创建房间</button>
+        <button class="tab" data-tab="join" role="tab">加入房间</button>
+        <button class="tab" data-tab="owner" role="tab">房主回归</button>
+      </div>
+
+      <!-- 创建 -->
+      <form id="form-create" class="panel active">
+        <label class="field">
+          <span>房间名称</span>
+          <input id="create-room-name" type="text" maxlength="30" placeholder="例如：我和小明的秘密基地" autocomplete="off">
+        </label>
+        <label class="field">
+          <span>我的昵称</span>
+          <input id="create-nick" type="text" maxlength="20" placeholder="对方看到的名字" autocomplete="off">
+        </label>
+        <button type="submit" class="btn primary" id="btn-create">创建房间</button>
+      </form>
+
+      <!-- 加入 -->
+      <form id="form-join" class="panel">
+        <label class="field">
+          <span>邀请码</span>
+          <input id="join-code" type="text" maxlength="12" placeholder="对方发给你的邀请码" autocomplete="off">
+        </label>
+        <label class="field">
+          <span>我的昵称</span>
+          <input id="join-nick" type="text" maxlength="20" placeholder="对方看到的名字" autocomplete="off">
+        </label>
+        <button type="submit" class="btn primary" id="btn-join">加入房间</button>
+      </form>
+
+      <!-- 房主回归 -->
+      <form id="form-owner" class="panel">
+        <p class="hint">在其它设备重新进入自己创建的房间</p>
+        <label class="field">
+          <span>邀请码</span>
+          <input id="owner-code" type="text" maxlength="12" placeholder="创建时显示的邀请码" autocomplete="off">
+        </label>
+        <label class="field">
+          <span>房主凭证</span>
+          <input id="owner-pass" type="text" maxlength="12" placeholder="创建时显示的房主凭证" autocomplete="off">
+        </label>
+        <label class="field">
+          <span>昵称（可选）</span>
+          <input id="owner-nick" type="text" maxlength="20" placeholder="留空则沿用创建时昵称" autocomplete="off">
+        </label>
+        <button type="submit" class="btn primary" id="btn-owner">进入房间</button>
+      </form>
+    </div>
+
+    <div class="my-rooms" id="my-rooms" hidden>
+      <div class="my-rooms-title">我创建过的房间</div>
+      <div id="my-rooms-list"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 视图：创建成功，展示邀请信息 ===== -->
+<section id="screen-invite" class="screen" hidden>
+  <div class="enter-wrap">
+    <div class="card invite-card">
+      <h2>房间创建成功</h2>
+      <p class="subtitle">把下面的「邀请码」发给你想邀请的那个人。对方进入后，你们就可以开始聊天。</p>
+
+      <div class="invite-row">
+        <span class="invite-label">邀请码</span>
+        <div class="invite-value" id="invite-code"></div>
+        <button type="button" class="btn ghost" id="btn-copy-code">复制</button>
+      </div>
+
+      <div class="invite-row">
+        <span class="invite-label">房主凭证</span>
+        <div class="invite-value invite-pass" id="invite-pass"></div>
+        <button type="button" class="btn ghost" id="btn-copy-pass">复制</button>
+      </div>
+      <p class="hint">房主凭证用于在其它设备重新进入房间，请自己保存，不要发给对方。</p>
+
+      <button type="button" class="btn primary wide" id="btn-go-chat">进入聊天室</button>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 视图：聊天 ===== -->
+<section id="screen-chat" class="screen" hidden>
+  <header class="chat-header">
+    <div class="chat-title">
+      <div class="chat-name" id="chat-room-name">聊天室</div>
+      <div class="chat-meta" id="chat-meta"></div>
+    </div>
+    <div class="chat-status">
+      <span class="dot" id="status-dot"></span>
+      <span id="status-text">连接中</span>
+      <button type="button" class="btn ghost small" id="btn-leave">退出</button>
+    </div>
+  </header>
+
+  <main class="msg-list" id="msg-list">
+    <div class="msg-empty" id="msg-empty">还没有消息<br>先打个招呼吧</div>
+  </main>
+
+  <footer class="chat-input">
+    <input type="file" id="file-image" accept="image/*" hidden>
+    <input type="file" id="file-doc" hidden>
+    <button type="button" class="icon-btn" id="btn-image" title="发送图片">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="9" cy="10" r="1.8" fill="currentColor"/><path d="M4.5 18.5l5-5.5 3.5 4 2.5-3 4 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+    </button>
+    <button type="button" class="icon-btn" id="btn-doc" title="发送文档">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6 3h8l4 4v14H6z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M14 3v4h4M9 12h6M9 16h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    </button>
+    <button type="button" class="icon-btn mic" id="btn-mic" title="按住说话">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><rect x="8.5" y="3.5" width="7" height="12" rx="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    </button>
+    <input id="text-input" type="text" maxlength="2000" placeholder="输入消息，支持任何语言" autocomplete="off">
+    <button type="button" class="btn primary send" id="btn-send" title="发送">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 12l16-8-6 16-2.5-6L4 12z" fill="currentColor"/></svg>
+    </button>
+  </footer>
+</section>
+
+<div class="toast" id="toast" hidden></div>
+<div class="loading" id="loading" hidden>
+  <div class="loading-box">正在连接服务器…</div>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/vendor/av-min.js"></script>
+<script src="js/vendor/im-browser.min.js"></script>
+<script src="js/vendor/typed-messages.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
