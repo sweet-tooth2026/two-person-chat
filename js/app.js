@@ -33,6 +33,9 @@
     reconnectTimer: null,
     reconnectDelay: 1000,
     closedByUser: false,
+    pollTimer: null,
+    localSeq: 0,      // 本地乐观回显用的临时序号
+    localMsgs: [],    // 尚未被服务器确认的本地消息
   };
 
   /* ===== 小工具 ===== */
@@ -293,15 +296,18 @@
   /* ===== 聊天 ===== */
   function enterChat() {
     if (!S.room) return;
+    S.localMsgs = [];
     $("chat-room-name").textContent = S.room.name || "聊天室";
     $("chat-meta").textContent = (S.room.role === "owner" ? "房主" : "受邀者") + " · " + esc(S.room.myNick || "");
     setStatus("connecting", "连接中…");
     showScreen("chat");
     connectWs();
+    startPolling();
   }
 
   function leaveChat() {
     S.closedByUser = true;
+    stopPolling();
     closeWs();
     clearSession();
     S.room = null;
@@ -346,8 +352,12 @@
       var msg;
       try { msg = JSON.parse(ev.data); } catch (e) { return; }
       if (msg && msg.seq) {
-        S.lastSeq = Math.max(S.lastSeq, msg.seq);
-        renderMessage(msg, false);
+        // 按 seq 去重：只有比已见序号更新的消息才渲染
+        if (msg.seq > S.lastSeq) {
+          S.lastSeq = msg.seq;
+          removeLocalMatch(msg);
+          renderMessage(msg, false);
+        }
       }
     };
     ws.onclose = function () {
@@ -386,14 +396,84 @@
       .then(function (d) {
         var msgs = d.messages || [];
         msgs.forEach(function (m) {
-          if (m.seq > S.lastSeq) S.lastSeq = m.seq;
-          renderMessage(m, false);
+          if (m.seq > S.lastSeq) {
+            S.lastSeq = m.seq;
+            removeLocalMatch(m);
+            renderMessage(m, false);
+          }
         });
         if (!msgs.length) {
           msgEmpty.hidden = false;
         }
       })
       .catch(function () {});
+  }
+
+  /* ===== 自动补拉：实时通道不可靠时兜底，保证消息不靠刷新就能出现 ===== */
+  function startPolling() {
+    stopPolling();
+    S.pollTimer = setInterval(pollHistory, 15000);
+  }
+
+  function stopPolling() {
+    if (S.pollTimer) {
+      clearInterval(S.pollTimer);
+      S.pollTimer = null;
+    }
+  }
+
+  function pollHistory() {
+    if (!S.room || S.closedByUser) return;
+    api("/api/history?room=" + encodeURIComponent(S.room.roomId) + "&limit=100")
+      .then(function (d) {
+        var msgs = d.messages || [];
+        var added = false;
+        msgs.forEach(function (m) {
+          if (m.seq > S.lastSeq) {
+            S.lastSeq = m.seq;
+            removeLocalMatch(m);
+            renderMessage(m, false);
+            added = true;
+          }
+        });
+        if (added) scrollBottom();
+      })
+      .catch(function () {});
+  }
+
+  /* ===== 本地乐观回显 + 服务器确认后去重 ===== */
+  function renderLocalEcho(msg) {
+    S.localSeq += 1;
+    var clientSeq = S.localSeq;
+    S.localMsgs.push({
+      clientSeq: clientSeq,
+      match: msg,
+    });
+    var row = renderMessage(msg, false);
+    if (row) row.setAttribute("data-client-seq", String(clientSeq));
+  }
+
+  function removeLocalMatch(serverMsg) {
+    if (!S.localMsgs.length) return;
+    var hit = null;
+    for (var i = 0; i < S.localMsgs.length; i++) {
+      var lm = S.localMsgs[i];
+      var m = lm.match;
+      var same = false;
+      if (serverMsg.media && m.media && serverMsg.media.id === m.media.id) {
+        same = true;
+      } else if (m.type === "text" && serverMsg.type === "text" &&
+                 serverMsg.from === m.from && serverMsg.text === m.text &&
+                 Math.abs(serverMsg.ts - m.ts) < 20000) {
+        same = true;
+      }
+      if (same) { hit = lm; break; }
+    }
+    if (hit) {
+      S.localMsgs.splice(S.localMsgs.indexOf(hit), 1);
+      var rows = msgList.querySelectorAll('[data-client-seq="' + hit.clientSeq + '"]');
+      for (var j = 0; j < rows.length; j++) rows[j].remove();
+    }
   }
 
   function sendText() {
@@ -404,6 +484,8 @@
     try {
       S.ws.send(JSON.stringify({ type: "text", text: text }));
       input.value = "";
+      // 本地立即显示（服务器确认后自动去重替换）
+      renderLocalEcho({ from: S.room.role, ts: Date.now(), type: "text", text: text });
     } catch (e) {
       toast("发送失败");
     }
@@ -432,6 +514,8 @@
       .then(function (media) {
         showLoading(false);
         S.ws.send(JSON.stringify({ type: type, media: media }));
+        // 本地立即显示（服务器确认后按 media.id 去重替换）
+        renderLocalEcho({ from: S.room.role, ts: Date.now(), type: type, media: media });
       })
       .catch(function (err) {
         showLoading(false);
@@ -609,6 +693,7 @@
     }
     msgEmpty.hidden = true;
     if (!prepend) scrollBottom();
+    return row;
   }
 
   function scrollBottom() {
