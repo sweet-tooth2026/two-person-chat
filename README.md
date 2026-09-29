@@ -12,10 +12,10 @@
 ## 技术架构
 
 - 前端：静态网页（原生 HTML/CSS/JS），托管在 GitHub Pages
-- 后端：LeanCloud 国际版（leancloud.app，免费开发版）
-  - 数据存储：保存房间记录（邀请码 → 会话映射）
-  - 即时通信：文字 / 图片 / 语音 / 文件消息的实时收发与云端历史
-- SDK 文件已内置在 `js/vendor/`，不依赖外部 CDN
+- 后端：Deno Deploy（免费版）
+  - 数据存储：Deno KV（房间元数据、消息记录、媒体分块）
+  - 即时通信：WebSocket 实时收发 + 云端历史
+  - 媒体：图片 / 文件 / 语音按 60KB 分块存入 KV，上限 20MB
 
 ## 目录结构
 
@@ -23,35 +23,29 @@
 two-person-chat/
 ├── index.html          # 页面
 ├── css/style.css       # 样式
-├── js/config.js        # LeanCloud 凭证（需要填写）
-├── js/app.js           # 逻辑
-├── js/vendor/          # LeanCloud SDK（已内置）
-│   ├── av-min.js
-│   ├── im-browser.min.js
-│   └── typed-messages.js
+├── js/config.js        # 后端地址配置
+├── js/app.js           # 前端逻辑
+├── deno.json           # Deno Deploy 入口配置
+├── deno_server.ts      # 后端程序（Deno Deploy）
 └── README.md
 ```
 
 ## 部署步骤
 
-### 1. 创建 GitHub 仓库并开启 Pages
+### 1. 前端（GitHub Pages）
 
-1. 在 GitHub 新建公开仓库（例如 `two-person-chat`），上传本目录全部文件到 main 分支。
+1. 把本目录全部文件提交到 GitHub 仓库 main 分支。
 2. 仓库 Settings → Pages → Source 选「Deploy from a branch」→ 分支 `main`、目录 `/ (root)` → Save。
 3. 网站地址：`https://<你的用户名>.github.io/two-person-chat/`
 
-### 2. 配置后端（LeanCloud 国际版）
+### 2. 后端（Deno Deploy，免费）
 
-国内版 LeanCloud 需要绑定已备案域名，本项目的后端使用**国际版**（免备案、免费开发版）。
-
-1. 打开 https://leancloud.app 注册账号（邮箱注册 + 验证）。
-2. 创建一个应用（免费开发版即可）。
-3. 进入应用「设置 > 应用凭证」，复制：
-   - **App ID**
-   - **App Key**（注意：不是 Master Key）
-   - **服务器地址（Server URL）**：形如 `https://xxxxxxxx.api.lncldglobal.com`
-4. 编辑 `js/config.js`，把三个值填入对应位置，然后重新上传 / 提交到仓库。
-5. 首次打开页面会提示初始化失败或未配置，填好凭证并重新部署后即正常。
+1. 打开 https://dash.deno.com 注册（可用 GitHub 账号登录）。
+2. 新建应用（New Project）→ 选择本项目仓库 → 应用类型选 **Dynamic App**，入口文件填 `deno_server.ts`（或保证仓库根目录有 deno.json，其中 `deploy.entrypoint = "deno_server.ts"`）。
+3. 创建后进入 **Databases** → Deno KV → **+ Attach** → **Provision Deno KV**，给应用关联一个 KV 数据库（后端启动需要）。
+4. 在 **Builds** 页触发一次部署（Deploy Default Branch / Retry Build），等待成功。
+5. 应用地址：`https://<应用名>.<用户名>.deno.net`
+6. 编辑 `js/config.js`，把 `WORKER_URL` 改成你的 Deno 应用地址，重新提交到仓库。
 
 ### 3. 使用
 
@@ -63,12 +57,10 @@ two-person-chat/
 
 - 邀请码即通行证：知道邀请码的人就能加入该房间（每个房间限 2 人，先到先得）。
 - 房主凭证相当于房间管理口令：请自己保存，不要发给对方。
-- 页面代码公开（GitHub Pages 公开仓库），App ID / App Key 本身是客户端凭证、不保密，隐私由邀请码的随机性保证（10 位无歧义字符，不可枚举）。
-- 会话内消息会存储在 LeanCloud 云端（开发版额度内），如需彻底删除消息，可在 LeanCloud 控制台清空对应数据。
+- 隐私由邀请码的随机性保证（10 位无歧义字符，不可枚举）。
 
 ## 已知限制
 
 - 视频通话未实现（已规划为后续功能）。
-- 文件大小受 LeanCloud 开发版上限约束（约 10MB），超大文件发送会失败。
-- 国际版服务器在境外，国内访问有轻微延迟，文字消息一般不受影响。
-- 若双方使用同一邀请码并发加入，理论上可能同时通过校验（极端情况），一般不会发生。
+- 文件上限 20MB（超出会被拒绝）。
+- 免费额度：Deno Deploy 免费版每月 100 万请求、KV 1GB；普通聊天远用不完。
